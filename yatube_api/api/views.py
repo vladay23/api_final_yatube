@@ -1,19 +1,24 @@
-# TODO:  Напишите свой вариант
 from django.shortcuts import get_object_or_404
-from rest_framework import filters, viewsets
+from rest_framework import filters, viewsets, mixins
 from rest_framework.pagination import LimitOffsetPagination
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from posts.models import Follow, Group, Post
-from .permissions import IsOwnerOrReadOnly
+from .permissions import IsAuthorOrReadOnly
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.permissions import AllowAny
 from .serializers import (CommentSerializer, FollowSerializer,
                           GroupSerializer, PostSerializer)
+
+
+class MyTokenObtainPairView(TokenObtainPairView):
+    permission_classes = (AllowAny,)
 
 
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
-    permission_classes = (IsOwnerOrReadOnly,)
+    permission_classes = (IsAuthorOrReadOnly,)
     pagination_class = LimitOffsetPagination
 
     def perform_create(self, serializer):
@@ -22,7 +27,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
-    permission_classes = (IsOwnerOrReadOnly,)
+    permission_classes = (IsAuthorOrReadOnly,)
 
     def get_post(self):
         return get_object_or_404(Post, pk=self.kwargs.get('post_id'))
@@ -42,16 +47,19 @@ class GroupViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = (AllowAny,)
 
 
-class FollowViewSet(viewsets.GenericViewSet,
-                    viewsets.mixins.ListModelMixin,
-                    viewsets.mixins.CreateModelMixin):
-    queryset = Follow.objects.all()
+class FollowViewSet(mixins.ListModelMixin,
+                    mixins.CreateModelMixin,
+                    viewsets.GenericViewSet):
     serializer_class = FollowSerializer
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
     search_fields = ('following__username',)
+    permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
         return self.request.user.follower.all()
 
     def perform_create(self, serializer):
+        following = serializer.validated_data.get('following')
+        if following == self.request.user:
+            raise permissions.ValidationError("Вы не можете подписаться на себя.")
         serializer.save(user=self.request.user)
