@@ -63,20 +63,26 @@ class Follow(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name='follower',
-        verbose_name='Подписчик',)
+        verbose_name='Подписчик'
+    )
     following = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name='following',
-        verbose_name='Подписан',)
+        verbose_name='Подписан'
+    )
 
     class Meta:
-        constraints = (
+        constraints = [
             models.UniqueConstraint(
                 fields=('user', 'following'),
                 name='unique_follow'
-            ),)
+            ),
+        ]
 
+    def clean(self):
+        if Follow.objects.filter(user=self.user, following=self.following).exists():
+            raise ValidationError('Вы уже подписаны на этого пользователя.')
 
 class Comment(models.Model):
     author = models.ForeignKey(
